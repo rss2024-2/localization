@@ -31,11 +31,11 @@ class SensorModel:
 
         ####################################
         # Adjust these parameters
-        self.alpha_hit = 0
-        self.alpha_short = 0
-        self.alpha_max = 0
-        self.alpha_rand = 0
-        self.sigma_hit = 0
+        self.alpha_hit = 0.74
+        self.alpha_short = 0.07
+        self.alpha_max = 0.07
+        self.alpha_rand = 0.12
+        self.sigma_hit = 8.0
 
         # Your sensor table will be a `table_width` x `table_width` np array:
         self.table_width = 201
@@ -86,8 +86,15 @@ class SensorModel:
         returns:
             No return type. Directly modify `self.sensor_model_table`.
         """
-
-        raise NotImplementedError
+        z,d=np.indices((self.table_width,self.table_width))
+        phit=np.exp(-(z-d)**2/(2*self.sigma_hit**2))
+        phit=phit/np.sum(phit,axis=0)
+        pshort=np.zeros((self.table_width,self.table_width))
+        for i in range(self.table_width):
+            pshort[:i,i]=2*np.arange(i,0,-1)/(i*(i+1))
+        pmax=np.hstack((np.zeros((self.table_width,self.table_width-1)),np.ones((self.table_width,1))))
+        prand=np.full((self.table_width,self.table_width),1/self.table_width)
+        self.sensor_model_table=self.alpha_hit*phit+self.alpha_short*pshort+self.alpha_max*pmax+self.alpha_rand*prand
 
     def evaluate(self, particles, observation):
         """
@@ -121,7 +128,12 @@ class SensorModel:
         # to perform ray tracing from all the particles.
         # This produces a matrix of size N x num_beams_per_particle 
 
-        scans = self.scan_sim.scan(particles)
+        scans=self.scan_sim.scan(particles)
+
+        observation=np.floor(np.clip(observation/(self.resolution*self.lidar_scale_to_map_scale),0,self.table_width-1)).astype(int)
+        scans=np.floor(np.clip(scans/(self.resolution*self.lidar_scale_to_map_scale),0,self.table_width-1)).astype(int)
+
+        return np.prod(self.sensor_model_table[observation,scans],axis=1)
 
         ####################################
 

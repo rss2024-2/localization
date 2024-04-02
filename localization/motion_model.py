@@ -1,16 +1,9 @@
-
+import numpy as np
 
 class MotionModel:
 
-    def __init__(self, node):
-        ####################################
-        # TODO
-        # Do any precomputation for the motion
-        # model here.
-
-        pass
-
-        ####################################
+    def __init__(self,node):
+        self.covariance=np.eye(3)/10
 
     def evaluate(self, particles, odometry):
         """
@@ -31,9 +24,21 @@ class MotionModel:
                 same size
         """
 
-        ####################################
-        # TODO
+        N=len(particles)
 
-        raise NotImplementedError
+        noise=np.random.multivariate_normal(np.zeros(3),self.covariance,N)
 
-        ####################################
+        dx=odometry[0]
+        dy=odometry[1]
+        dtheta=odometry[2]
+
+        theta=particles[:,2]
+
+        rot_x=dx*np.cos(theta)-dy*np.sin(theta)
+        rot_y=dx*np.sin(theta)+dy*np.cos(theta)
+
+        return particles+np.column_stack((rot_x,rot_y,np.full((N),dtheta)))+noise
+
+# Test Case
+# model=MotionModel()
+# print(model.evaluate(np.array([[3,4,np.pi/6],[3,4,np.pi/3]]),np.array([0.223,-0.013,np.pi/60])))
