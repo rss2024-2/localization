@@ -17,6 +17,8 @@ assert rclpy
 
 from tf_transformations import euler_from_quaternion
 
+import time
+
 
 class ParticleFilter(Node):
 
@@ -80,6 +82,8 @@ class ParticleFilter(Node):
 
         self.particles=np.array([])
 
+        self.cur_time=None
+
         # Implement the MCL algorithm
         # using the sensor model and the motion model
         #
@@ -101,17 +105,22 @@ class ParticleFilter(Node):
 
     def odom_callback(self, odom_msg):
 
+        if self.cur_time==None:
+            self.cur_time=time.time()
+            return
+
         if len(self.particles)==0:
             return
         
         self.lock.acquire()
 
-        dx = odom_msg.twist.twist.linear.x
-        dy = odom_msg.twist.twist.linear.y
+        v = odom_msg.twist.twist.linear.x
         dtheta = odom_msg.twist.twist.angular.z
+        dt = (time.time()-self.cur_time)
+        self.cur_time=time.time()
 
-        odometry = np.array([dx, dy, dtheta])
-        self.particles = self.motion_model.evaluate(self.particles,odometry)
+        self.particles = self.motion_model.evaluate(self.particles,np.array([v,dtheta,dt]))
+        self.publish_particles()
         self.lock.release()
 
     def laser_callback(self, laser_msg):
@@ -121,16 +130,14 @@ class ParticleFilter(Node):
         
         ranges = np.array(laser_msg.ranges)[::len(laser_msg.ranges)//100]
         
-        self.probabilities = self.sensor_model.evaluate(self.particles, ranges)
+        self.probabilities = np.sqrt(self.sensor_model.evaluate(self.particles, ranges))
         self.probabilities/=sum(self.probabilities)
 
         self.lock.acquire()
         self.particles = self.particles[np.random.choice(self.N, self.N, True, self.probabilities)]
         self.lock.release()
 
-
-        self.publish_particles()
-
+        # self.publish_particles()
 
     def pose_callback(self, pose_msg):
 
