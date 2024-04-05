@@ -19,6 +19,8 @@ from tf_transformations import euler_from_quaternion
 
 import time
 
+from scipy.stats import circmean
+
 
 class ParticleFilter(Node):
 
@@ -78,7 +80,7 @@ class ParticleFilter(Node):
 
         self.get_logger().info("=============+READY+=============")
 
-        self.N=100 # Number of particles
+        self.N=1000 # Number of particles
 
         self.particles=np.array([])
 
@@ -120,8 +122,9 @@ class ParticleFilter(Node):
         self.cur_time=time.time()
 
         self.particles = self.motion_model.evaluate(self.particles,np.array([v,dtheta,dt]))
-        self.publish_particles()
         self.lock.release()
+
+        self.publish_particles()
 
     def laser_callback(self, laser_msg):
 
@@ -130,14 +133,14 @@ class ParticleFilter(Node):
         
         ranges = np.array(laser_msg.ranges)[::len(laser_msg.ranges)//100]
         
-        self.probabilities = np.sqrt(self.sensor_model.evaluate(self.particles, ranges))
+        self.probabilities = self.sensor_model.evaluate(self.particles, ranges)**(1/4)
         self.probabilities/=sum(self.probabilities)
 
         self.lock.acquire()
         self.particles = self.particles[np.random.choice(self.N, self.N, True, self.probabilities)]
         self.lock.release()
 
-        # self.publish_particles()
+        self.publish_particles()
 
     def pose_callback(self, pose_msg):
 
@@ -174,7 +177,20 @@ class ParticleFilter(Node):
             pose.orientation.w = quaternion[3]
             pose_array.poses.append(pose)
 
+        odom_msg=Odometry()
+        odom_msg.header.frame_id="map"
+        odom_msg.header.stamp=self.get_clock().now().to_msg()
+        odom_msg.pose.pose.position.x=np.mean(self.particles[:,0])
+        odom_msg.pose.pose.position.y=np.mean(self.particles[:,1])
+        angle=circmean(self.particles[:,2])
+        quaternion=self.yaw_to_quaternion(angle)
+        odom_msg.pose.pose.orientation.x=quaternion[0]
+        odom_msg.pose.pose.orientation.y=quaternion[1]
+        odom_msg.pose.pose.orientation.z=quaternion[2]
+        odom_msg.pose.pose.orientation.w=quaternion[3]
+
         self.particle_publisher.publish(pose_array)
+        self.odom_pub.publish(odom_msg)
 
 
 
