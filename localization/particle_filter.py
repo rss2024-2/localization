@@ -6,6 +6,7 @@ import threading
 
 from visualization_msgs.msg import Marker
 
+from std_msgs.msg import Float32
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped, Pose
 from sensor_msgs.msg import LaserScan
@@ -20,6 +21,8 @@ from tf_transformations import euler_from_quaternion
 import time
 
 from scipy.stats import circmean
+
+from tf2_ros import Buffer,TransformListener
 
 
 class ParticleFilter(Node):
@@ -86,6 +89,13 @@ class ParticleFilter(Node):
 
         self.cur_time=None
 
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer,self)
+
+        self.x_error_pub=self.create_publisher(Float32,"/x_error",1)
+        self.y_error_pub=self.create_publisher(Float32,"/y_error",1)
+        self.angle_error_pub=self.create_publisher(Float32,"/angle_error",1)
+
         # Implement the MCL algorithm
         # using the sensor model and the motion model
         #
@@ -96,10 +106,7 @@ class ParticleFilter(Node):
         # Publish a transformation frame between the map
         # and the particle_filter_frame.
 
-    def get_2Dpose_from_3Dpose(self, pose):
-        
-        position=pose.position
-        quaternion=pose.orientation
+    def get_2Dpose_from_3Dpose(self, position, quaternion):
 
         yaw = euler_from_quaternion([quaternion.x,quaternion.y,quaternion.z,quaternion.w])[2]
 
@@ -146,7 +153,7 @@ class ParticleFilter(Node):
 
         noise=np.random.multivariate_normal(np.zeros(3),np.eye(3)/10,self.N)
 
-        init_point=self.get_2Dpose_from_3Dpose(pose_msg.pose.pose)
+        init_point=self.get_2Dpose_from_3Dpose(pose_msg.pose.pose.position,pose_msg.pose.pose.orientation)
 
         self.particles=init_point+noise
 
@@ -180,17 +187,38 @@ class ParticleFilter(Node):
         odom_msg=Odometry()
         odom_msg.header.frame_id="map"
         odom_msg.header.stamp=self.get_clock().now().to_msg()
-        odom_msg.pose.pose.position.x=np.mean(self.particles[:,0])
-        odom_msg.pose.pose.position.y=np.mean(self.particles[:,1])
-        angle=circmean(self.particles[:,2])
-        quaternion=self.yaw_to_quaternion(angle)
+        avg_x=np.mean(self.particles[:,0])
+        avg_y=np.mean(self.particles[:,1])
+        odom_msg.pose.pose.position.x=avg_x
+        odom_msg.pose.pose.position.y=avg_y
+        avg_angle=circmean(self.particles[:,2])
+        quaternion=self.yaw_to_quaternion(avg_angle)
         odom_msg.pose.pose.orientation.x=quaternion[0]
         odom_msg.pose.pose.orientation.y=quaternion[1]
         odom_msg.pose.pose.orientation.z=quaternion[2]
         odom_msg.pose.pose.orientation.w=quaternion[3]
 
+        transform=self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
+
+        t=transform.transform.translation
+        q=transform.transform.rotation
+        ground_truth=self.get_2Dpose_from_3Dpose(t,q)
+
+        x_error=float(avg_x-ground_truth[0])
+        y_error=float(avg_x-ground_truth[1])
+        angle_error=float(avg_x-ground_truth[2])
+
         self.particle_publisher.publish(pose_array)
         self.odom_pub.publish(odom_msg)
+        x_error_msg=Float32()
+        x_error_msg.data=x_error
+        self.x_error_pub.publish(x_error_msg)
+        y_error_msg=Float32()
+        y_error_msg.data=y_error
+        self.y_error_pub.publish(y_error_msg)
+        angle_error_msg=Float32()
+        angle_error_msg.data=angle_error
+        self.angle_error_pub.publish(angle_error_msg)
 
 
 
