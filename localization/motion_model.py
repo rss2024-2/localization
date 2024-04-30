@@ -3,7 +3,7 @@ import numpy as np
 class MotionModel:
 
     def __init__(self,node):
-        self.covariance=np.diag([0.1,np.pi/3])
+        self.covariance=np.diag([0.3,np.pi/30])
 
     def evaluate(self, particles, odometry):
         """
@@ -27,6 +27,7 @@ class MotionModel:
         N=len(particles)
 
         noise=np.random.multivariate_normal(np.zeros(2),self.covariance,N)
+        #noise = np.zeros((N,2))
 
         dt=odometry[2]
         v=odometry[0]+noise[:,0]
@@ -34,7 +35,10 @@ class MotionModel:
 
         theta=particles[:,2]
 
-        return particles+np.column_stack((v*np.cos(theta)*dt,v*np.sin(theta)*dt,dtheta))
+        return particles+np.column_stack((-v*np.cos(theta)*dt,-v*np.sin(theta)*dt,-dtheta))
+
+
+
 
 # Test Case
 # model=MotionModel()

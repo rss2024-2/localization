@@ -83,7 +83,7 @@ class ParticleFilter(Node):
 
         self.get_logger().info("=============+READY+=============")
 
-        self.N=1000 # Number of particles
+        self.N=100 # Number of particles
 
         self.particles=np.array([])
 
@@ -138,8 +138,11 @@ class ParticleFilter(Node):
         if len(self.particles)==0:
             return
         
-        ranges = np.array(laser_msg.ranges)[::len(laser_msg.ranges)//100]
-        
+        #print(len(laser_msg.ranges))
+        disc=len(laser_msg.ranges)%100
+        # ranges = np.array(laser_msg.ranges)[disc//2::len(laser_msg.ranges)//100][:100]
+        ranges = np.array(laser_msg.ranges)[::11]
+                
         self.probabilities = self.sensor_model.evaluate(self.particles, ranges)**(1/4)
         self.probabilities/=sum(self.probabilities)
 
@@ -151,7 +154,7 @@ class ParticleFilter(Node):
 
     def pose_callback(self, pose_msg):
 
-        noise=np.random.multivariate_normal(np.zeros(3),np.eye(3)/10,self.N)
+        noise=np.random.multivariate_normal(np.zeros(3),np.eye(3),self.N)
 
         init_point=self.get_2Dpose_from_3Dpose(pose_msg.pose.pose.position,pose_msg.pose.pose.orientation)
 
@@ -172,17 +175,17 @@ class ParticleFilter(Node):
         pose_array.header.frame_id = "map"
         pose_array.header.stamp = self.get_clock().now().to_msg()
 
-        for particle in self.particles:
-            pose = Pose()
-            pose.position.x = particle[0]
-            pose.position.y = particle[1]
-            quaternion = self.yaw_to_quaternion(particle[2])
-            pose.position.z = 0.0
-            pose.orientation.x = quaternion[0]
-            pose.orientation.y = quaternion[1]
-            pose.orientation.z = quaternion[2]
-            pose.orientation.w = quaternion[3]
-            pose_array.poses.append(pose)
+        # for particle in self.particles:
+        #     pose = Pose()
+        #     pose.position.x = particle[0]
+        #     pose.position.y = particle[1]
+        #     quaternion = self.yaw_to_quaternion(particle[2])
+        #     pose.position.z = 0.0
+        #     pose.orientation.x = quaternion[0]
+        #     pose.orientation.y = quaternion[1]
+        #     pose.orientation.z = quaternion[2]
+        #     pose.orientation.w = quaternion[3]
+        #     pose_array.poses.append(pose)
 
         odom_msg=Odometry()
         odom_msg.header.frame_id="map"
@@ -198,7 +201,7 @@ class ParticleFilter(Node):
         odom_msg.pose.pose.orientation.z=quaternion[2]
         odom_msg.pose.pose.orientation.w=quaternion[3]
 
-        transform=self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
+        transform=self.tf_buffer.lookup_transform('map', 'map', rclpy.time.Time())
 
         t=transform.transform.translation
         q=transform.transform.rotation
@@ -208,7 +211,7 @@ class ParticleFilter(Node):
         y_error=float(avg_x-ground_truth[1])
         angle_error=float(avg_x-ground_truth[2])
 
-        self.particle_publisher.publish(pose_array)
+        #self.particle_publisher.publish(pose_array)
         self.odom_pub.publish(odom_msg)
         x_error_msg=Float32()
         x_error_msg.data=x_error
